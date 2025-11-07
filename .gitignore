@@ -57,6 +57,14 @@ cover/
 *.txt
 .DS_Store
 
+# But include requirements files
+!requirements*.txt
+!README.txt
+
+# And include sample_resumes directory and its contents
+!sample_resumes/
+!sample_resumes/**
+
 # Translations
 *.mo
 *.pot
