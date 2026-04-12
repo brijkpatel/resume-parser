@@ -26,7 +26,7 @@ class TestLLMExtractionStrategy:
 
         assert strategy.model == mock_model
         assert strategy.spec == spec
-        mock_model_class.assert_called_once_with("gemini-2.0-flash-exp")
+        mock_model_class.assert_called_once_with("gemini-2.0-flash")
 
     @patch("extractors.strategies.llm.genai.GenerativeModel")
     def test_init_with_custom_model(self, mock_model_class: MagicMock):

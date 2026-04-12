@@ -78,9 +78,9 @@ class TestResumeExtractorContactFields:
         assert isinstance(result.contact, ContactInfo)
         assert result.contact.phone == "+1-800-555-0100"
         assert result.contact.location == "Austin, TX"
-        assert result.contact.linkedin_url == ["https://linkedin.com/in/jdoe"]
-        assert result.contact.github_url == ["https://github.com/jdoe"]
-        assert result.contact.portfolio_url == ["https://jdoe.dev"]
+        assert result.contact.linkedin_url == "https://linkedin.com/in/jdoe"
+        assert result.contact.github_url == "https://github.com/jdoe"
+        assert result.contact.portfolio_url == "https://jdoe.dev"
         assert result.contact.other_urls == ["https://blog.jdoe.dev"]
 
     def test_contact_info_built_even_when_no_contact_extractors(self):

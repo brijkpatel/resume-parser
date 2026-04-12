@@ -154,7 +154,7 @@ class LLMExtractionStrategy(ExtractionStrategy[List[str]]):
     extractor is responsible for deserialising each string into a typed dataclass.
     """
 
-    def __init__(self, spec: FieldSpec, model_name: str = "gemini-2.0-flash-exp"):
+    def __init__(self, spec: FieldSpec, model_name: str = "gemini-2.0-flash"):
         """Initialize with Gemini model.
 
         Args:

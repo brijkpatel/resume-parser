@@ -139,10 +139,15 @@ class ResumeExtractor:
         # --- Contact fields ---
         phone = self._extract_field(FieldType.PHONE, text)
         location = self._extract_field(FieldType.LOCATION, text)
-        linkedin_url = self._extract_field(FieldType.LINKEDIN_URL, text)
-        github_url = self._extract_field(FieldType.GITHUB_URL, text)
-        portfolio_url = self._extract_field(FieldType.PORTFOLIO_URL, text)
+        # URL extractors always return List[str]; single-URL fields keep only the first
+        linkedin_url_raw = self._extract_field(FieldType.LINKEDIN_URL, text)
+        github_url_raw   = self._extract_field(FieldType.GITHUB_URL, text)
+        portfolio_url_raw = self._extract_field(FieldType.PORTFOLIO_URL, text)
         other_urls = self._extract_field(FieldType.OTHER_URLS, text) or []
+
+        linkedin_url  = linkedin_url_raw[0] if linkedin_url_raw else None
+        github_url    = github_url_raw[0]   if github_url_raw   else None
+        portfolio_url = portfolio_url_raw[0] if portfolio_url_raw else None
 
         contact = ContactInfo(
             phone=phone,
