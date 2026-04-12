@@ -187,15 +187,32 @@ class ExperienceAnalyticsExtractor(ComputedFieldExtractor[ExperienceAnalytics, L
 
     @staticmethod
     def _infer_career_level(title: str, total_years: float) -> str:
-        """Infer career level from the most recent job title and total years."""
+        """Infer career level from the most recent job title and total years.
+
+        Uses token-based matching to avoid false substring matches (e.g.
+        "cto" inside "director").  Multi-word keywords ("head of",
+        "vice president") are matched as phrases against the full lowercased
+        title; single-word keywords are matched against the set of word
+        tokens extracted from the title.
+        """
         if not title:
             return _years_to_level(total_years)
 
         title_lower = title.lower()
+        # Build a set of clean word tokens (strip punctuation)
+        word_tokens = set(re.sub(r"[^\w\s]", " ", title_lower).split())
+
         for level, keywords in _SENIORITY_LEVELS:
             for kw in keywords:
-                if kw in title_lower:
-                    return level
+                kw_clean = kw.strip().rstrip(".")
+                if " " in kw_clean:
+                    # Multi-word phrase: substring check against full title
+                    if kw_clean in title_lower:
+                        return level
+                else:
+                    # Single word: exact token match to avoid false positives
+                    if kw_clean in word_tokens:
+                        return level
 
         return _years_to_level(total_years)
 

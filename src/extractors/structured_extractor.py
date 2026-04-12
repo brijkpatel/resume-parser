@@ -1,7 +1,7 @@
 """Base class for extractors that deserialise LLM-produced JSON object strings."""
 
 import json
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 from typing import Generic, List, TypeVar
 
 from interfaces import ExtractionStrategy
@@ -11,7 +11,7 @@ from utils import logger
 T = TypeVar("T")
 
 
-class StructuredExtractor(Generic[T]):
+class StructuredExtractor(ABC, Generic[T]):
     """Base for extractors that receive JSON-string lists from the LLM and parse
     them into typed dataclass instances.
 
