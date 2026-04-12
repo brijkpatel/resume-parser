@@ -148,8 +148,14 @@ class TestResumeDataSerialization:
         # Act
         result = resume.to_dict()
 
-        # Assert
-        assert set(result.keys()) == {"name", "email", "skills"}
+        # Assert — check all top-level keys exist
+        expected_keys = {
+            "name", "email", "skills", "contact", "summary",
+            "work_experience", "education", "certifications", "projects",
+            "enriched_skills", "interests", "languages", "awards",
+            "volunteer_experience", "publications", "experience_analytics",
+        }
+        assert expected_keys.issubset(set(result.keys()))
 
     def test_to_json_valid_format(self):
         """Test converting ResumeData to JSON string."""
@@ -209,7 +215,7 @@ class TestResumeDataStringRepresentation:
     """Test cases for ResumeData string representations."""
 
     def test_str_representation(self):
-        """Test string representation."""
+        """Test string representation contains key fields."""
         # Arrange
         resume = ResumeData(
             name="John Doe", email="john@example.com", skills=["Python", "Java"]
@@ -218,15 +224,14 @@ class TestResumeDataStringRepresentation:
         # Act
         result = str(resume)
 
-        # Assert
+        # Assert — new __str__ shows counts rather than individual skill names
         assert "John Doe" in result
         assert "john@example.com" in result
-        assert "Python" in result
-        assert "Java" in result
+        assert "skills=2" in result
         assert "ResumeData" in result
 
     def test_repr_representation(self):
-        """Test repr representation."""
+        """Test repr representation contains key fields."""
         # Arrange
         resume = ResumeData(name="Jane Smith", email="jane@example.com", skills=["SQL"])
 
@@ -236,7 +241,7 @@ class TestResumeDataStringRepresentation:
         # Assert
         assert "Jane Smith" in result
         assert "jane@example.com" in result
-        assert "SQL" in result
+        assert "skills=1" in result
         assert "ResumeData" in result
 
     def test_str_and_repr_are_same(self):

@@ -30,30 +30,44 @@ class ExtractionConfig:
             field_type: The field to get strategies for
 
         Returns:
-            List of strategies in order of preference
+            List of strategies in order of preference (empty if not configured)
         """
         return self.strategy_preferences.get(field_type, [])
 
 
-# Default configuration: defines the preferred extraction strategies
-# Strategies are tried in order until one succeeds
+# Default configuration: defines the preferred extraction strategies.
+# Strategies are tried in order until one succeeds.
 DEFAULT_EXTRACTION_CONFIG = ExtractionConfig(
     strategy_preferences={
-        # For NAME: Try NER first (best accuracy), then fallback to LLM
-        FieldType.NAME: [
-            StrategyType.NER,
-            StrategyType.LLM,
-        ],
-        # For EMAIL: Try Regex first (fastest), then NER, then LLM
-        FieldType.EMAIL: [
-            StrategyType.REGEX,
-            StrategyType.NER,
-            StrategyType.LLM,
-        ],
-        # For SKILLS: Try LLM first (best for skills), then fallback to NER
-        FieldType.SKILLS: [
-            StrategyType.LLM,
-            StrategyType.NER,
-        ],
+        # Core identity — NER first (fastest for common patterns), LLM fallback
+        FieldType.NAME: [StrategyType.NER, StrategyType.LLM],
+        FieldType.EMAIL: [StrategyType.REGEX, StrategyType.NER, StrategyType.LLM],
+        FieldType.SKILLS: [StrategyType.LLM, StrategyType.NER],
+
+        # Contact info
+        FieldType.PHONE: [StrategyType.REGEX, StrategyType.LLM],
+        FieldType.LOCATION: [StrategyType.NER, StrategyType.LLM],
+        FieldType.LINKEDIN_URL: [StrategyType.REGEX, StrategyType.LLM],
+        FieldType.GITHUB_URL: [StrategyType.REGEX, StrategyType.LLM],
+        FieldType.PORTFOLIO_URL: [StrategyType.LLM],
+        FieldType.OTHER_URLS: [StrategyType.LLM],
+
+        # Professional narrative — LLM only (semantic understanding required)
+        FieldType.SUMMARY: [StrategyType.LLM],
+
+        # Structured sections — LLM only (JSON object output)
+        FieldType.WORK_EXPERIENCE: [StrategyType.LLM],
+        FieldType.EDUCATION: [StrategyType.LLM],
+        FieldType.CERTIFICATIONS: [StrategyType.LLM],
+        FieldType.PROJECTS: [StrategyType.LLM],
+
+        # Personal — LLM only
+        FieldType.INTERESTS: [StrategyType.LLM],
+        FieldType.LANGUAGES: [StrategyType.LLM],
+        FieldType.AWARDS: [StrategyType.LLM],
+
+        # Optional sections — LLM only
+        FieldType.VOLUNTEER_EXPERIENCE: [StrategyType.LLM],
+        FieldType.PUBLICATIONS: [StrategyType.LLM],
     }
 )

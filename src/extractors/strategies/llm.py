@@ -12,9 +12,147 @@ from exceptions import (
     ExternalServiceError,
 )
 
+# Fields that return an array of JSON-object strings rather than plain strings.
+_STRUCTURED_FIELD_TYPES = {
+    FieldType.WORK_EXPERIENCE,
+    FieldType.EDUCATION,
+    FieldType.CERTIFICATIONS,
+    FieldType.PROJECTS,
+    FieldType.VOLUNTEER_EXPERIENCE,
+    FieldType.PUBLICATIONS,
+}
+
+# JSON schema hints sent to the LLM for each structured field.
+_STRUCTURED_SCHEMAS: dict = {
+    FieldType.WORK_EXPERIENCE: (
+        '{"company": "string", "title": "string", "location": "string|null", '
+        '"start_date": "string|null", "end_date": "string|null", '
+        '"duration_months": number|null, "description": "string|null", '
+        '"responsibilities": ["string", ...], "skills_used": ["string", ...]}'
+    ),
+    FieldType.EDUCATION: (
+        '{"institution": "string", "degree": "string|null", '
+        '"field_of_study": "string|null", "start_date": "string|null", '
+        '"end_date": "string|null", "gpa": number|null, "honors": "string|null"}'
+    ),
+    FieldType.CERTIFICATIONS: (
+        '{"name": "string", "issuing_organization": "string|null", '
+        '"issue_date": "string|null", "expiry_date": "string|null", '
+        '"credential_id": "string|null", "credential_url": "string|null"}'
+    ),
+    FieldType.PROJECTS: (
+        '{"name": "string", "description": "string|null", '
+        '"technologies": ["string", ...], "url": "string|null", '
+        '"start_date": "string|null", "end_date": "string|null"}'
+    ),
+    FieldType.VOLUNTEER_EXPERIENCE: (
+        '{"organization": "string", "role": "string|null", '
+        '"start_date": "string|null", "end_date": "string|null", '
+        '"description": "string|null", "responsibilities": ["string", ...]}'
+    ),
+    FieldType.PUBLICATIONS: (
+        '{"title": "string", "publisher": "string|null", '
+        '"date": "string|null", "url": "string|null", "description": "string|null"}'
+    ),
+}
+
+# Prompt instructions for every supported field type.
+_FIELD_INSTRUCTIONS: dict = {
+    FieldType.NAME: (
+        "Extract the person's full name from the resume. "
+        "Return a JSON array with a single string: [\"Full Name\"]. "
+        "If not found return []."
+    ),
+    FieldType.EMAIL: (
+        "Extract the primary email address from the resume. "
+        "Return a JSON array with a single string: [\"email@example.com\"]. "
+        "If not found return []."
+    ),
+    FieldType.SKILLS: (
+        "Extract ALL technical and professional skills explicitly mentioned. "
+        "Include programming languages, frameworks, tools, platforms, methodologies, "
+        "and soft skills. Return a JSON array of strings. If none found return []."
+    ),
+    FieldType.PHONE: (
+        "Extract the primary phone number. "
+        "Return a JSON array with a single string in the original format. "
+        "If not found return []."
+    ),
+    FieldType.LOCATION: (
+        "Extract the person's current location (city, state, country or full address). "
+        "Return a JSON array with a single string. If not found return []."
+    ),
+    FieldType.LINKEDIN_URL: (
+        "Extract the LinkedIn profile URL. "
+        "Return a JSON array with a single string. If not found return []."
+    ),
+    FieldType.GITHUB_URL: (
+        "Extract the GitHub profile URL. "
+        "Return a JSON array with a single string. If not found return []."
+    ),
+    FieldType.PORTFOLIO_URL: (
+        "Extract the personal website or portfolio URL (not LinkedIn, not GitHub). "
+        "Return a JSON array with a single string. If not found return []."
+    ),
+    FieldType.OTHER_URLS: (
+        "Extract any other URLs from the resume that are NOT LinkedIn, GitHub, or a "
+        "personal portfolio (e.g., Twitter, Behance, Dribbble, Kaggle, StackOverflow). "
+        "Return a JSON array of strings. If none found return []."
+    ),
+    FieldType.SUMMARY: (
+        "Extract the professional summary, objective, or profile statement verbatim. "
+        "Return a JSON array with a single string. If not found return []."
+    ),
+    FieldType.WORK_EXPERIENCE: (
+        "Extract ALL work experience entries in reverse chronological order "
+        "(most recent first).\n"
+        "For duration_months: calculate from start_date and end_date "
+        "(use today for 'Present'). Set to null if dates are missing.\n"
+        "For skills_used: list technologies/skills explicitly mentioned in each role.\n"
+    ),
+    FieldType.EDUCATION: (
+        "Extract ALL education entries (degrees, diplomas, certificates from "
+        "academic institutions) in reverse chronological order.\n"
+        "For gpa: extract as a number (e.g., 3.8). Set to null if not mentioned.\n"
+    ),
+    FieldType.CERTIFICATIONS: (
+        "Extract ALL professional certifications and licenses "
+        "(NOT academic degrees — those go in education).\n"
+    ),
+    FieldType.PROJECTS: (
+        "Extract ALL personal or professional projects listed on the resume.\n"
+        "For technologies: list all tools/languages/frameworks mentioned per project.\n"
+    ),
+    FieldType.INTERESTS: (
+        "Extract hobbies, personal interests, and extracurricular activities. "
+        "Return a JSON array of strings. If none found return []."
+    ),
+    FieldType.LANGUAGES: (
+        "Extract spoken or written languages (e.g., English, Spanish, Mandarin). "
+        "Include proficiency level if mentioned (e.g., 'Spanish (Fluent)'). "
+        "Return a JSON array of strings. If none found return []."
+    ),
+    FieldType.AWARDS: (
+        "Extract awards, honours, recognitions, and achievements. "
+        "Return a JSON array of strings describing each one. If none found return []."
+    ),
+    FieldType.VOLUNTEER_EXPERIENCE: (
+        "Extract ALL volunteer, community service, or non-profit involvement entries.\n"
+    ),
+    FieldType.PUBLICATIONS: (
+        "Extract ALL publications: journal articles, conference papers, books, "
+        "blog posts, or any other published work.\n"
+    ),
+}
+
 
 class LLMExtractionStrategy(ExtractionStrategy[List[str]]):
-    """Extract using LLM (best for complex fields like skills)."""
+    """Extract using LLM (Gemini). Handles both plain-string and structured-JSON fields.
+
+    For structured fields (work experience, education, etc.) the strategy
+    returns a list of JSON-encoded strings — one per entry. The corresponding
+    extractor is responsible for deserialising each string into a typed dataclass.
+    """
 
     def __init__(self, spec: FieldSpec, model_name: str = "gemini-2.0-flash-exp"):
         """Initialize with Gemini model.
@@ -24,11 +162,10 @@ class LLMExtractionStrategy(ExtractionStrategy[List[str]]):
             model_name: Gemini model to use
 
         Raises:
-            InvalidStrategyConfigError: If model init fails
+            InvalidStrategyConfigError: If model init fails or API key missing
         """
         self.spec = spec
 
-        # Get API key from environment (load_dotenv should be called at app entry point)
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
             raise InvalidStrategyConfigError(
@@ -48,104 +185,110 @@ class LLMExtractionStrategy(ExtractionStrategy[List[str]]):
     def extract(self, text: str) -> List[str]:
         """Extract field using LLM.
 
-        Steps:
-            1. Build prompt for this field type
-            2. Call Gemini API
-            3. Parse JSON response
-            4. Return results
-
         Args:
-            text: Text to extract from
+            text: Resume text to extract from
 
         Returns:
-            List of extracted values
+            For plain fields: list of strings (usually 1 item for scalar fields).
+            For structured fields: list of JSON-encoded object strings.
 
         Raises:
-            NoMatchFoundError: If LLM can't find field
-            ExternalServiceError: If API fails
+            NoMatchFoundError: If LLM returns nothing useful
+            ExternalServiceError: If the API call fails
         """
         if not text or not text.strip():
             raise NoMatchFoundError("Cannot extract from empty text")
 
-        # Build field-specific prompt
-        prompt = self._build_prompt(text, self.spec)
+        prompt = self._build_prompt(text)
 
-        # Call API
         try:
             response = self.model.generate_content(prompt)  # type: ignore
             if not response or not response.text:
                 raise NoMatchFoundError("LLM returned empty response for field")
 
-            result = self._parse_response(response.text, self.spec)
-            return result
+            return self._parse_response(response.text)
 
-        except NoMatchFoundError as e:
-            raise e
+        except NoMatchFoundError:
+            raise
         except Exception as e:
             raise ExternalServiceError(
                 "Gemini API call failed", original_exception=e
             ) from e
 
-    def _build_prompt(self, text: str, spec: FieldSpec) -> str:
-        """Create prompt based on field type."""
-        field_instructions = {
-            FieldType.NAME: "Extract the person's full name from the resume text.",
-            FieldType.EMAIL: "Extract the person's email address from the resume text.",
-            FieldType.SKILLS: "Extract all technical skills mentioned in the resume text as a JSON array.",
-        }
+    # ------------------------------------------------------------------
+    # Private helpers
+    # ------------------------------------------------------------------
 
-        instruction = field_instructions.get(spec.field_type)
+    def _build_prompt(self, text: str) -> str:
+        """Build a field-specific prompt."""
+        field_type = self.spec.field_type
+        instruction = _FIELD_INSTRUCTIONS.get(field_type)
+        if instruction is None:
+            raise InvalidStrategyConfigError(
+                f"No LLM prompt defined for field type: {field_type.value}"
+            )
 
-        prompt = f"""{instruction}
-            Return the result as a valid JSON array of strings.
-            If nothing is found, return an empty array: []
+        is_structured = self.spec.is_structured or field_type in _STRUCTURED_FIELD_TYPES
 
-            Text:
-            {text}
-            Response (JSON array only):"""
-
-        return prompt
-
-    def _parse_response(self, response_text: str, spec: FieldSpec) -> List[str]:
-        """Parse JSON response from LLM."""
-        response_text = response_text.strip()
-
-        if spec.top_k is not None:
-            # Expecting JSON array
-            try:
-                # Extract JSON from response
-                if "[" in response_text and "]" in response_text:
-                    start = response_text.index("[")
-                    end = response_text.rindex("]") + 1
-                    json_str = response_text[start:end]
-                    result = json.loads(json_str)
-
-                    if not isinstance(result, list):
-                        raise ValueError("Response is not a list")
-
-                    # Clean and limit results
-                    result = [str(item).strip() for item in result if item]  # type: ignore
-                    if spec.top_k > 0:
-                        result = result[: spec.top_k]
-
-                    if not result:
-                        raise NoMatchFoundError(
-                            f"LLM found no values for field '{spec.field_type.value}'"
-                        )
-
-                    return result
-                else:
-                    raise ValueError("No JSON array found in response")
-
-            except (json.JSONDecodeError, ValueError) as e:
-                raise ExternalServiceError(
-                    "Failed to parse LLM response as JSON", original_exception=e
-                ) from e
+        if is_structured:
+            schema = _STRUCTURED_SCHEMAS.get(field_type, "{}")
+            return (
+                f"{instruction}\n"
+                f"Return a valid JSON array of objects matching this schema:\n"
+                f"{schema}\n"
+                f"If nothing is found, return an empty array: []\n\n"
+                f"Resume text:\n{text}\n\n"
+                f"Response (JSON array only, no markdown):"
+            )
         else:
-            # Single value expected
-            if response_text.upper() == "NOT_FOUND" or not response_text:
-                raise NoMatchFoundError(
-                    f"LLM could not find field '{spec.field_type.value}'"
-                )
+            return (
+                f"{instruction}\n\n"
+                f"Resume text:\n{text}\n\n"
+                f"Response (JSON array only, no markdown):"
+            )
 
-            return [response_text]
+    def _parse_response(self, response_text: str) -> List[str]:
+        """Parse the raw LLM response into a list of strings.
+
+        For plain fields: each item in the JSON array becomes a string.
+        For structured fields: each object in the JSON array is serialised
+        back to a compact JSON string so the extractor can deserialise it.
+        """
+        response_text = response_text.strip()
+        field_type = self.spec.field_type
+        is_structured = self.spec.is_structured or field_type in _STRUCTURED_FIELD_TYPES
+
+        # Extract the JSON array substring
+        if "[" not in response_text or "]" not in response_text:
+            raise NoMatchFoundError(
+                f"LLM response contained no JSON array for '{field_type.value}'"
+            )
+
+        start = response_text.index("[")
+        end = response_text.rindex("]") + 1
+        json_str = response_text[start:end]
+
+        try:
+            parsed = json.loads(json_str)
+        except json.JSONDecodeError as e:
+            raise ExternalServiceError(
+                "Failed to parse LLM response as JSON", original_exception=e
+            ) from e
+
+        if not isinstance(parsed, list):
+            raise ExternalServiceError("LLM response JSON is not an array")
+
+        if not parsed:
+            raise NoMatchFoundError(
+                f"LLM found no values for field '{field_type.value}'"
+            )
+
+        if is_structured:
+            # Return each dict as a compact JSON string for the extractor to parse
+            return [json.dumps(item, ensure_ascii=False) for item in parsed if item]
+        else:
+            # Plain strings — coerce each item and apply top_k limit
+            results = [str(item).strip() for item in parsed if item]
+            if self.spec.top_k is not None and self.spec.top_k > 0:
+                results = results[: self.spec.top_k]
+            return results

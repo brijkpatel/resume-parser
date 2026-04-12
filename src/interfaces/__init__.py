@@ -2,7 +2,13 @@
 
 from .file_parser import FileParser
 from .field_extractor import FieldExtractor
-from .extracting_strategy import StrategyType, FieldSpec, FieldType, ExtractionStrategy
+from .extracting_strategy import (
+    StrategyType,
+    FieldSpec,
+    FieldType,
+    ExtractionStrategy,
+    ComputedFieldExtractor,
+)
 
 __all__ = [
     "FileParser",
@@ -11,4 +17,5 @@ __all__ = [
     "FieldSpec",
     "FieldType",
     "ExtractionStrategy",
+    "ComputedFieldExtractor",
 ]

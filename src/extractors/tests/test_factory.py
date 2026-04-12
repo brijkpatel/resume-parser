@@ -60,7 +60,7 @@ class TestCreateExtractor:
         # Act & Assert
         with pytest.raises(
             InvalidStrategyConfigError,
-            match="Strategy is not supported for field",
+            match="not supported for field",
         ):
             create_extractor(FieldType.NAME, StrategyType.REGEX)
 
@@ -145,7 +145,7 @@ class TestCreateExtractor:
         # Act & Assert
         with pytest.raises(
             InvalidStrategyConfigError,
-            match="Strategy is not supported for field",
+            match="not supported for field",
         ):
             create_extractor(FieldType.SKILLS, StrategyType.REGEX)
 
@@ -214,7 +214,7 @@ class TestCreateStrategy:
         # Act & Assert
         with pytest.raises(
             InvalidStrategyConfigError,
-            match="Regex patterns not configured for field",
+            match="No regex patterns configured",
         ):
             _create_strategy(FieldType.NAME, StrategyType.REGEX, spec)
 
