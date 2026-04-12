@@ -219,16 +219,23 @@ class LLMExtractionStrategy(ExtractionStrategy[List[str]]):
     # Private helpers
     # ------------------------------------------------------------------
 
-    def _build_prompt(self, text: str) -> str:
-        """Build a field-specific prompt."""
-        field_type = self.spec.field_type
+    def _build_prompt(self, text: str, spec: "FieldSpec | None" = None) -> str:
+        """Build a field-specific prompt.
+
+        Args:
+            text: Resume text to extract from
+            spec: Optional FieldSpec override. Defaults to ``self.spec``.
+        """
+        if spec is None:
+            spec = self.spec
+        field_type = spec.field_type
         instruction = _FIELD_INSTRUCTIONS.get(field_type)
         if instruction is None:
             raise InvalidStrategyConfigError(
                 f"No LLM prompt defined for field type: {field_type.value}"
             )
 
-        is_structured = self.spec.is_structured or field_type in _STRUCTURED_FIELD_TYPES
+        is_structured = spec.is_structured or field_type in _STRUCTURED_FIELD_TYPES
 
         if is_structured:
             schema = _STRUCTURED_SCHEMAS.get(field_type, "{}")
@@ -258,10 +265,26 @@ class LLMExtractionStrategy(ExtractionStrategy[List[str]]):
         field_type = self.spec.field_type
         is_structured = self.spec.is_structured or field_type in _STRUCTURED_FIELD_TYPES
 
-        # Extract the JSON array substring
-        if "[" not in response_text or "]" not in response_text:
+        # Handle NOT_FOUND / empty sentinel before any JSON parsing
+        normalised = response_text.strip("'\"`").upper()
+        if normalised in {"NOT_FOUND", "NONE", "N/A", "NULL", "UNKNOWN", ""}:
             raise NoMatchFoundError(
+                f"LLM could not find field '{field_type.value}'"
+            )
+
+        # No JSON array bracket present
+        if "[" not in response_text:
+            if self.spec.top_k is None and not is_structured:
+                # Scalar field — treat plain-text as the single extracted value
+                return [response_text]
+            raise ExternalServiceError(
                 f"LLM response contained no JSON array for '{field_type.value}'"
+            )
+
+        # Opening bracket found but closing bracket missing — malformed JSON
+        if "]" not in response_text:
+            raise ExternalServiceError(
+                f"LLM returned malformed JSON (missing ']') for '{field_type.value}'"
             )
 
         start = response_text.index("[")
