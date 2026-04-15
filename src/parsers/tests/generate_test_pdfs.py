@@ -238,6 +238,71 @@ def create_large_pdf():
     print(f"Created {filename.name}")
 
 
+def create_multicolumn_pdf():
+    """Create a two-column resume-style PDF.
+
+    Left column contains "Left Column Content"; right column contains
+    "Right Column Content".  Tests assert that both strings appear and
+    that the left-column text comes before the right-column text in the
+    parsed output (correct reading order).
+    """
+    from reportlab.pdfgen import canvas as rl_canvas
+    from reportlab.lib.pagesizes import letter
+
+    filename = data_dir / "multicolumn.pdf"
+    width, height = letter
+    c = rl_canvas.Canvas(str(filename), pagesize=letter)
+    c.setFont("Helvetica", 11)
+
+    # Left column (x ≈ 0–280)
+    left_x = 72
+    c.drawString(left_x, height - 100, "Left Column Content")
+    c.drawString(left_x, height - 120, "Python Developer")
+    c.drawString(left_x, height - 140, "San Francisco, CA")
+
+    # Right column (x ≈ 310–540)
+    right_x = 310
+    c.drawString(right_x, height - 100, "Right Column Content")
+    c.drawString(right_x, height - 120, "5 years experience")
+    c.drawString(right_x, height - 140, "Open to remote")
+
+    c.save()
+    print(f"Created {filename.name}")
+
+
+def create_pdf_with_header_footer():
+    """Create a PDF with a repeating header and footer and distinct body text.
+
+    Header: "Document Header"
+    Footer: "Page 1 of 1"
+    Body:   "Main Body Content" / "Experience" / "Education"
+    """
+    from reportlab.pdfgen import canvas as rl_canvas
+    from reportlab.lib.pagesizes import letter
+
+    filename = data_dir / "with_header_footer.pdf"
+    width, height = letter
+    c = rl_canvas.Canvas(str(filename), pagesize=letter)
+    c.setFont("Helvetica", 11)
+
+    # Header (top of page)
+    c.setFont("Helvetica-Bold", 10)
+    c.drawString(72, height - 30, "Document Header")
+
+    # Footer (bottom of page)
+    c.setFont("Helvetica", 9)
+    c.drawString(72, 20, "Page 1 of 1")
+
+    # Body content (middle of page)
+    c.setFont("Helvetica", 11)
+    c.drawString(72, height - 120, "Main Body Content")
+    c.drawString(72, height - 150, "Experience: 5 years in software engineering")
+    c.drawString(72, height - 180, "Education: BSc Computer Science")
+
+    c.save()
+    print(f"Created {filename.name}")
+
+
 if __name__ == "__main__":
     try:
         create_simple_pdf()
@@ -247,6 +312,8 @@ if __name__ == "__main__":
         create_images_only_pdf()
         create_password_protected_pdf()
         create_large_pdf()
+        create_multicolumn_pdf()
+        create_pdf_with_header_footer()
         print("\nAll test PDF files created successfully!")
     except Exception as e:
         print(f"Error creating test files: {e}")
