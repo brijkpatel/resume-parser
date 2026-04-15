@@ -236,6 +236,199 @@ def create_legacy_doc():
     print("Created sample.doc")
 
 
+def create_textboxes_docx():
+    """Create a DOCX with a modern wps:txbx text box containing 'Text Box Content'.
+
+    The text box is injected as raw XML since python-docx has no public API
+    for creating text boxes.
+    """
+    from docx.oxml.ns import qn
+    from docx.oxml import OxmlElement
+    from lxml import etree
+
+    doc = Document()
+    doc.add_heading("Resume with Text Box", 0)
+    doc.add_paragraph("Normal body paragraph.")
+
+    # Build the wps:txbx XML fragment.
+    txbx_xml = (
+        '<w:p xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+        ' xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"'
+        ' xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"'
+        ' xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape"'
+        ' xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006">'
+        "<w:r><w:rPr/></w:r>"
+        "<w:r>"
+        "<w:drawing>"
+        '<wp:inline distT="0" distB="0" distL="0" distR="0">'
+        '<wp:extent cx="2000000" cy="1000000"/>'
+        "<wp:docPr id=\"1\" name=\"TextBox1\"/>"
+        "<a:graphic>"
+        "<a:graphicData"
+        ' uri="http://schemas.microsoft.com/office/word/2010/wordprocessingShape">'
+        "<wps:wsp>"
+        "<wps:txbx>"
+        '<w:txbxContent xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        "<w:p><w:r><w:t>Text Box Content</w:t></w:r></w:p>"
+        "</w:txbxContent>"
+        "</wps:txbx>"
+        "</wps:wsp>"
+        "</a:graphicData>"
+        "</a:graphic>"
+        "</wp:inline>"
+        "</w:drawing>"
+        "</w:r>"
+        "</w:p>"
+    )
+    txbx_elem = etree.fromstring(txbx_xml)
+    doc.element.body.append(txbx_elem)
+
+    doc.save(str(data_dir / "with_textboxes.docx"))
+    print("Created with_textboxes.docx")
+
+
+def create_merged_cells_docx():
+    """Create a DOCX with a table that has merged cells.
+
+    Row 0: cells (0,0) and (0,1) are merged → single cell text "Merged Header".
+    Row 1: "Company" | "Role"
+    Row 2: "Acme Corp" | "Engineer"
+    Tests assert "Merged Header" appears exactly once (no duplication).
+    """
+    doc = Document()
+    doc.add_heading("Resume — Merged Table", 0)
+
+    table = doc.add_table(rows=3, cols=2)
+
+    # Merge first row across both columns.
+    merged = table.cell(0, 0).merge(table.cell(0, 1))
+    merged.text = "Merged Header"
+
+    table.cell(1, 0).text = "Company"
+    table.cell(1, 1).text = "Role"
+    table.cell(2, 0).text = "Acme Corp"
+    table.cell(2, 1).text = "Engineer"
+
+    doc.save(str(data_dir / "merged_cells.docx"))
+    print("Created merged_cells.docx")
+
+
+def create_hyperlinks_docx():
+    """Create a DOCX paragraph containing a hyperlink with display text.
+
+    The hyperlink display text is "Visit Example"; the URL target is
+    https://example.com.  Tests assert "Visit Example" appears in parsed output.
+    """
+    from docx.oxml.ns import qn
+    from lxml import etree
+
+    doc = Document()
+    doc.add_heading("Resume with Hyperlinks", 0)
+    doc.add_paragraph("Contact information below.")
+
+    # Add a relationship for the hyperlink.
+    para = doc.add_paragraph("Portfolio: ")
+    part = doc.part
+    r_id = part.relate_to(
+        "https://example.com",
+        "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink",
+        is_external=True,
+    )
+
+    # Build <w:hyperlink r:id="..."><w:r><w:t>Visit Example</w:t></w:r></w:hyperlink>
+    hyperlink_xml = (
+        f'<w:hyperlink r:id="{r_id}"'
+        ' xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+        ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+        "<w:r>"
+        "<w:rPr><w:rStyle w:val=\"Hyperlink\"/></w:rPr>"
+        "<w:t>Visit Example</w:t>"
+        "</w:r>"
+        "</w:hyperlink>"
+    )
+    hl_elem = etree.fromstring(hyperlink_xml)
+    para._element.append(hl_elem)
+
+    doc.add_paragraph("Additional body text after hyperlink.")
+    doc.save(str(data_dir / "with_hyperlinks.docx"))
+    print("Created with_hyperlinks.docx")
+
+
+def create_footnotes_docx():
+    """Create a DOCX with a footnote by directly manipulating the XML parts.
+
+    The footnote text is "This is footnote text."
+    Tests assert this text appears in the parsed output.
+    """
+    import zipfile
+    import shutil
+    import io
+    import re
+
+    # Build a simple docx from python-docx first.
+    doc = Document()
+    doc.add_heading("Resume with Footnote", 0)
+    doc.add_paragraph("Main body text.")
+
+    # Save to an in-memory buffer so we can rewrite the zip.
+    buf = io.BytesIO()
+    doc.save(buf)
+    buf.seek(0)
+
+    footnotes_xml = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
+        '<w:footnotes xmlns:wpc="http://schemas.microsoft.com/office/word/2010/wordprocessingCanvas"'
+        ' xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+        ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">\n'
+        '  <w:footnote w:type="separator" w:id="-1">'
+        "<w:p><w:r><w:separator/></w:r></w:p></w:footnote>\n"
+        '  <w:footnote w:type="continuationSeparator" w:id="0">'
+        "<w:p><w:r><w:continuationSeparator/></w:r></w:p></w:footnote>\n"
+        '  <w:footnote w:id="1">'
+        "<w:p><w:r><w:t>This is footnote text.</w:t></w:r></w:p>"
+        "</w:footnote>\n"
+        "</w:footnotes>"
+    )
+
+    # Rewrite the zip, injecting the footnotes part and updating [Content_Types].xml
+    # and word/_rels/document.xml.rels.
+    out_buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "r") as zin, zipfile.ZipFile(out_buf, "w", zipfile.ZIP_DEFLATED) as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+
+            if item.filename == "[Content_Types].xml":
+                content = data.decode("utf-8")
+                if "footnotes" not in content:
+                    insert = (
+                        '<Override PartName="/word/footnotes.xml"'
+                        ' ContentType="application/vnd.openxmlformats-officedocument'
+                        '.wordprocessingml.footnotes+xml"/>'
+                    )
+                    content = content.replace("</Types>", insert + "</Types>")
+                data = content.encode("utf-8")
+
+            elif item.filename == "word/_rels/document.xml.rels":
+                content = data.decode("utf-8")
+                if "footnotes" not in content:
+                    rel = (
+                        '<Relationship Id="rFootnotes" Type="http://schemas.openxmlformats.org'
+                        '/officeDocument/2006/relationships/footnotes"'
+                        ' Target="footnotes.xml"/>'
+                    )
+                    content = content.replace("</Relationships>", rel + "</Relationships>")
+                data = content.encode("utf-8")
+
+            zout.writestr(item, data)
+
+        # Add the new footnotes.xml part.
+        zout.writestr("word/footnotes.xml", footnotes_xml.encode("utf-8"))
+
+    out_path = data_dir / "with_footnotes.docx"
+    out_path.write_bytes(out_buf.getvalue())
+    print("Created with_footnotes.docx")
+
+
 if __name__ == "__main__":
     try:
         create_simple_docx()
@@ -250,6 +443,10 @@ if __name__ == "__main__":
         create_empty_paragraphs_docx()
         create_nested_tables_docx()
         create_legacy_doc()
+        create_textboxes_docx()
+        create_merged_cells_docx()
+        create_hyperlinks_docx()
+        create_footnotes_docx()
         print("\nAll test DOCX files created successfully!")
     except Exception as e:
         print(f"Error creating test files: {e}")

@@ -33,6 +33,8 @@ def setup_parser_test_data():
             create_images_only_pdf,
             create_password_protected_pdf,
             create_large_pdf,
+            create_multicolumn_pdf,
+            create_pdf_with_header_footer,
         )
 
         create_simple_pdf()
@@ -42,6 +44,8 @@ def setup_parser_test_data():
         create_images_only_pdf()
         create_password_protected_pdf()
         create_large_pdf()
+        create_multicolumn_pdf()
+        create_pdf_with_header_footer()
 
         # Stub edge-case PDF files
         (data_dir / "empty.pdf").write_bytes(b"")
@@ -66,6 +70,10 @@ def setup_parser_test_data():
             create_empty_paragraphs_docx,
             create_nested_tables_docx,
             create_legacy_doc,
+            create_textboxes_docx,
+            create_merged_cells_docx,
+            create_hyperlinks_docx,
+            create_footnotes_docx,
         )
 
         create_simple_docx()
@@ -80,6 +88,10 @@ def setup_parser_test_data():
         create_empty_paragraphs_docx()
         create_nested_tables_docx()
         create_legacy_doc()
+        create_textboxes_docx()
+        create_merged_cells_docx()
+        create_hyperlinks_docx()
+        create_footnotes_docx()
 
         # Stub edge-case DOCX/misc files
         (data_dir / "empty.docx").write_bytes(b"")

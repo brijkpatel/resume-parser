@@ -204,6 +204,58 @@ class TestPDFParserEdgeCases:
         assert isinstance(text, str)
         assert len(text) > 1000  # Should have substantial content
 
+    def test_parse_multicolumn_pdf(self, parser: PDFParser):
+        """Both column texts extracted in left-before-right reading order."""
+        pdf = TEST_DATA_DIR / "multicolumn.pdf"
+        if not pdf.exists():
+            pytest.skip(f"Test file {pdf} does not exist")
+
+        text = parser.parse(str(pdf))
+        assert "Left Column Content" in text
+        assert "Right Column Content" in text
+        assert text.index("Left Column Content") < text.index("Right Column Content")
+
+    def test_parse_pdf_header_footer_excluded_from_body(self, parser: PDFParser):
+        """Body content is present; header/footer bands are cropped out."""
+        pdf = TEST_DATA_DIR / "with_header_footer.pdf"
+        if not pdf.exists():
+            pytest.skip(f"Test file {pdf} does not exist")
+
+        text = parser.parse(str(pdf))
+        assert "Main Body Content" in text
+        assert "Document Header" not in text
+        assert "Page 1 of 1" not in text
+
+    def test_parse_pdf_tables_pipe_delimited(self, parser: PDFParser):
+        """Tables in PDFs are extracted as pipe-delimited rows."""
+        pdf = TEST_DATA_DIR / "with_tables.pdf"
+        if not pdf.exists():
+            pytest.skip(f"Test file {pdf} does not exist")
+
+        text = parser.parse(str(pdf))
+        assert "|" in text
+
+    def test_encrypted_pdf_raises_informative_error(self, parser: PDFParser):
+        """Password-protected PDF raises FileParsingError mentioning encryption."""
+        pdf = TEST_DATA_DIR / "password_protected.pdf"
+        if not pdf.exists():
+            pytest.skip(f"Test file {pdf} does not exist")
+
+        with pytest.raises(FileParsingError) as exc_info:
+            parser.parse(str(pdf))
+        msg = str(exc_info.value).lower()
+        assert "encrypt" in msg or "password" in msg
+
+    def test_image_only_pdf_raises_informative_error(self, parser: PDFParser):
+        """Image-only PDF raises FileParsingError mentioning images."""
+        pdf = TEST_DATA_DIR / "images_only.pdf"
+        if not pdf.exists():
+            pytest.skip(f"Test file {pdf} does not exist")
+
+        with pytest.raises(FileParsingError) as exc_info:
+            parser.parse(str(pdf))
+        assert "image" in str(exc_info.value).lower() or "No text content" in str(exc_info.value)
+
     def test_clean_extracted_text_empty_string(self, parser: PDFParser):
         """Test _clean_extracted_text with empty string."""
         result = parser._clean_extracted_text("")
@@ -230,3 +282,99 @@ class TestPDFParserEdgeCases:
         assert "Line 1" in result
         assert "Line 2" in result
         assert "Line 3" in result
+
+
+class TestPDFParserLayoutMethods:
+    """Unit tests for the private layout-analysis methods."""
+
+    @pytest.fixture
+    def parser(self):
+        return PDFParser()
+
+    def test_split_columns_single_column(self, parser: PDFParser):
+        """Words with no large horizontal gap → single column."""
+        words = [
+            {"x0": 72, "x1": 120, "top": 100, "bottom": 112, "text": "Hello"},
+            {"x0": 125, "x1": 170, "top": 100, "bottom": 112, "text": "World"},
+            {"x0": 72, "x1": 130, "top": 115, "bottom": 127, "text": "Second"},
+        ]
+        cols = parser._split_columns(words, page_width=612)
+        assert len(cols) == 1
+        assert len(cols[0]) == 3
+
+    def test_split_columns_two_columns(self, parser: PDFParser):
+        """Words with a wide x gap are split into two columns."""
+        left = [
+            {"x0": 72, "x1": 200, "top": 100, "bottom": 112, "text": "Left"},
+            {"x0": 72, "x1": 210, "top": 115, "bottom": 127, "text": "Column"},
+        ]
+        right = [
+            {"x0": 320, "x1": 450, "top": 100, "bottom": 112, "text": "Right"},
+            {"x0": 320, "x1": 470, "top": 115, "bottom": 127, "text": "Column"},
+        ]
+        cols = parser._split_columns(left + right, page_width=612)
+        assert len(cols) == 2
+        # Left column words appear first
+        assert cols[0][0]["text"] == "Left"
+        assert cols[1][0]["text"] == "Right"
+
+    def test_split_columns_empty_words(self, parser: PDFParser):
+        """Empty word list returns empty list without error."""
+        assert parser._split_columns([], page_width=612) == []
+
+    def test_words_to_lines_single_line(self, parser: PDFParser):
+        """Words on the same Y position are joined into one line."""
+        words = [
+            {"top": 100.0, "text": "John"},
+            {"top": 100.5, "text": "Doe"},  # within tolerance
+            {"top": 100.0, "text": "Engineer"},
+        ]
+        result = parser._words_to_lines(words)
+        assert result == "John Doe Engineer"
+
+    def test_words_to_lines_multiple_lines(self, parser: PDFParser):
+        """Words with distinct Y positions form separate lines."""
+        words = [
+            {"top": 100.0, "text": "Line1"},
+            {"top": 115.0, "text": "Line2"},
+            {"top": 130.0, "text": "Line3"},
+        ]
+        result = parser._words_to_lines(words)
+        assert result == "Line1\nLine2\nLine3"
+
+    def test_words_to_lines_empty(self, parser: PDFParser):
+        """Empty word list returns empty string."""
+        assert parser._words_to_lines([]) == ""
+
+    def test_header_footer_boundaries_proportion(self, parser: PDFParser):
+        """Boundaries are 6% from each edge by default."""
+        import pdfplumber
+
+        with pdfplumber.open(
+            str(
+                __import__("pathlib").Path(__file__).parent
+                / "data"
+                / "valid_resume.pdf"
+            )
+        ) as pdf:
+            page = pdf.pages[0]
+            header_end, footer_start = parser._header_footer_boundaries(page)
+            assert header_end == pytest.approx(page.height * 0.06, rel=0.01)
+            assert footer_start == pytest.approx(page.height * 0.94, rel=0.01)
+
+    def test_inside_any_word_inside_bbox(self, parser: PDFParser):
+        """Word midpoint inside a bbox returns True."""
+        word = {"x0": 90, "x1": 150, "top": 90, "bottom": 110}
+        bboxes = [(80, 80, 200, 120)]
+        assert parser._inside_any(word, bboxes) is True
+
+    def test_inside_any_word_outside_bbox(self, parser: PDFParser):
+        """Word midpoint outside all bboxes returns False."""
+        word = {"x0": 300, "x1": 400, "top": 300, "bottom": 320}
+        bboxes = [(80, 80, 200, 120)]
+        assert parser._inside_any(word, bboxes) is False
+
+    def test_inside_any_empty_bboxes(self, parser: PDFParser):
+        """No bboxes → always False."""
+        word = {"x0": 90, "x1": 150, "top": 90, "bottom": 110}
+        assert parser._inside_any(word, []) is False
