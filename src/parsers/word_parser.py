@@ -82,6 +82,8 @@ class WordParser(FileParser):
 
             return full_text
 
+        except FileParsingError:
+            raise
         except Exception as e:
             raise FileParsingError(
                 "Error parsing Word document.", original_exception=e
