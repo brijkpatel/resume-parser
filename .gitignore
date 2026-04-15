@@ -54,6 +54,7 @@ cover/
 # Generated test data files
 *.pdf
 *.docx
+*.doc
 *.txt
 .DS_Store
 
